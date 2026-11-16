@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediTrack - Medicine Stock & Expiry Tracker</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js for visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.05);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0,0,0,0.2);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-xs w-full pointer-events-none"></div>
+
+  <!-- Header / Navigation -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16 items-center">
+        <!-- Logo & Title -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-teal-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+            <i data-lucide="pill-bottle" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold bg-gradient-to-r from-brand-700 to-teal-600 bg-clip-text text-transparent">MediTrack</h1>
+            <p class="text-xs text-slate-500 font-medium hidden sm:block">Pharma Inventory & Expiry Management</p>
+          </div>
+        </div>
+
+        <!-- Quick Actions & Tools -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <button onclick="openModal()" class="bg-brand-600 hover:bg-brand-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 shadow-sm transition-all duration-200 hover:shadow">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Add Medicine</span>
+          </button>
+
+          <div class="h-6 w-px bg-slate-200 mx-1"></div>
+
+          <!-- Export Dropdown / Buttons -->
+          <button onclick="exportCSV()" class="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition" title="Export CSV">
+            <i data-lucide="download" class="w-5 h-5"></i>
+          </button>
+          
+          <label class="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition cursor-pointer" title="Import JSON">
+            <i data-lucide="upload" class="w-5 h-5"></i>
+            <input type="file" id="importFile" accept=".json" class="hidden" onchange="importJSON(event)">
+          </label>
+
+          <button onclick="resetToSampleData()" class="p-2 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded-lg transition" title="Reset Demo Data">
+            <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Summary Metrics Dashboard -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Total Items -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Stock Items</p>
+            <h3 id="stat-total" class="text-3xl font-bold text-slate-800 mt-2">0</h3>
+          </div>
+          <div class="p-3 bg-slate-100 text-slate-600 rounded-xl">
+            <i data-lucide="boxes" class="w-6 h-6"></i>
+          </div>
+        </div>
+        <p id="stat-value" class="text-xs text-slate-500 mt-3 font-medium">Total Value: $0.00</p>
+      </div>
+
+      <!-- Expired -->
+      <div class="bg-white p-5 rounded-2xl border border-red-100 shadow-sm hover:shadow-md transition bg-gradient-to-br from-white to-red-50/30">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wider text-red-600">Expired Stock</p>
+            <h3 id="stat-expired" class="text-3xl font-bold text-red-600 mt-2">0</h3>
+          </div>
+          <div class="p-3 bg-red-100 text-red-600 rounded-xl">
+            <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+          </div>
+        </div>
+        <p class="text-xs text-red-500 mt-3 font-medium flex items-center gap-1">
+          <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Disposal Required
+        </p>
+      </div>
+
+      <!-- Expiring Soon -->
+      <div class="bg-white p-5 rounded-2xl border border-amber-100 shadow-sm hover:shadow-md transition bg-gradient-to-br from-white to-amber-50/30">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wider text-amber-600">Expiring in 30 Days</p>
+            <h3 id="stat-expiring" class="text-3xl font-bold text-amber-600 mt-2">0</h3>
+          </div>
+          <div class="p-3 bg-amber-100 text-amber-600 rounded-xl">
+            <i data-lucide="clock" class="w-6 h-6"></i>
+          </div>
+        </div>
+        <p class="text-xs text-amber-600 mt-3 font-medium flex items-center gap-1">
+          <i data-lucide="arrow-right-left" class="w-3.5 h-3.5"></i> Prioritize FEFO Dispatch
+        </p>
+      </div>
+
+      <!-- Healthy Stock -->
+      <div class="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm hover:shadow-md transition bg-gradient-to-br from-white to-emerald-50/30">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wider text-emerald-600">Healthy Stock</p>
+            <h3 id="stat-healthy" class="text-3xl font-bold text-emerald-600 mt-2">0</h3>
+          </div>
+          <div class="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
+            <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+          </div>
+        </div>
+        <p id="stat-low-stock" class="text-xs text-slate-500 mt-3 font-medium">0 items low in quantity</p>
+      </div>
+    </section>
+
+    <!-- FEFO Alert Banner & Timeline Chart Toggle -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- FEFO Priority Alert Box -->
+      <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <div class="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
+                <i data-lucide="zap" class="w-5 h-5"></i>
+              </div>
+              <h2 class="text-base font-bold text-slate-800">FEFO Dispatch Priority (First-Expired, First-Out)</h2>
+            </div>
+            <span class="text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-200">Action Needed</span>
+          </div>
+          <p class="text-xs text-slate-500 mb-4">Stock items closest to expiration must be issued or dispatched first to minimize pharmaceutical wastage.</p>
+          
+          <div id="fefo-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1">
+            <!-- FEFO Items injected dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Category / Expiry Distribution Analytics Chart -->
+      <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col items-center justify-center">
+        <div class="w-full flex justify-between items-center mb-2">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">Inventory Status Breakdown</h3>
+          <i data-lucide="pie-chart" class="w-4 h-4 text-slate-400"></i>
+        </div>
+        <div class="w-full h-44 flex items-center justify-center">
+          <canvas id="statusChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search, Filters, and Table Container -->
+    <section class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      
+      <!-- Filter Bar Header -->
+      <div class="p-4 sm:p-5 border-b border-slate-100 space-y-4">
+        <div class="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center">
+          
+          <!-- Search Input -->
+          <div class="relative flex-1">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="searchInput" oninput="renderTable()" placeholder="Search by medicine name, batch number, or supplier..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition">
+          </div>
+
+          <!-- Category Filter -->
+          <div class="w-full sm:w-48">
+            <select id="categoryFilter" onchange="renderTable()" class="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-slate-700">
+              <option value="ALL">All Categories</option>
+              <option value="Antibiotics">Antibiotics</option>
+              <option value="Analgesics">Analgesics</option>
+              <option value="Cardiovascular">Cardiovascular</option>
+              <option value="Vaccines">Vaccines</option>
+              <option value="Diabetes">Diabetes</option>
+              <option value="Vitamins">Vitamins</option>
+              <option value="Respiratory">Respiratory</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Quick Filter Tabs -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <div class="flex flex-wrap gap-1.5" id="quick-filter-tabs">
+            <button onclick="setFilter('ALL')" data-filter="ALL" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-white shadow-sm">All Stock</button>
+            <button onclick="setFilter('EXPIRED')" data-filter="EXPIRED" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium transition text-slate-600 hover:bg-slate-100">
+              <span class="inline-block w-2 h-2 rounded-full bg-red-500 mr-1.5"></span>Expired
+            </button>
+            <button onclick="setFilter('CRITICAL')" data-filter="CRITICAL" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium transition text-slate-600 hover:bg-slate-100">
+              <span class="inline-block w-2 h-2 rounded-full bg-amber-500 mr-1.5"></span>Critical (&lt; 30d)
+            </button>
+            <button onclick="setFilter('WARNING')" data-filter="WARNING" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium transition text-slate-600 hover:bg-slate-100">
+              <span class="inline-block w-2 h-2 rounded-full bg-yellow-400 mr-1.5"></span>Warning (&lt; 60d)
+            </button>
+            <button onclick="setFilter('SAFE')" data-filter="SAFE" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium transition text-slate-600 hover:bg-slate-100">
+              <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1.5"></span>Safe
+            </button>
+            <button onclick="setFilter('LOW_STOCK')" data-filter="LOW_STOCK" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium transition text-slate-600 hover:bg-slate-100">
+              <i data-lucide="alert-circle" class="w-3 h-3 inline mr-1"></i>Low Stock
+            </button>
+          </div>
+
+          <div class="text-xs text-slate-400 font-medium">
+            Showing <span id="showing-count" class="text-slate-700 font-bold">0</span> items
+          </div>
+        </div>
+      </div>
+
+      <!-- Inventory Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr class="bg-slate-50/80 text-slate-500 uppercase text-[11px] font-semibold tracking-wider border-b border-slate-200">
+              <th class="py-3 px-4">Medicine Details</th>
+              <th class="py-3 px-4">Category</th>
+              <th class="py-3 px-4">Batch No.</th>
+              <th class="py-3 px-4">Quantity</th>
+              <th class="py-3 px-4">Expiry Date</th>
+              <th class="py-3 px-4">Status</th>
+              <th class="py-3 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="inventory-tbody" class="divide-y divide-slate-100">
+            <!-- Table rows injected via JavaScript -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="hidden p-12 text-center">
+        <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
+          <i data-lucide="package-x" class="w-6 h-6"></i>
+        </div>
+        <h3 class="text-slate-700 font-semibold mb-1">No medicines found</h3>
+        <p class="text-slate-400 text-xs max-w-sm mx-auto mb-4">Try adjusting your filters or search query, or add a new medicine to inventory.</p>
+        <button onclick="openModal()" class="px-4 py-2 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 transition">
+          Add New Medicine
+        </button>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 py-4 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400">
+      MediTrack Pharmacy System &copy; 2026. FEFO Compliance & Stock Monitoring Module.
+    </div>
+  </footer>
+
+  <!-- Modal: Add / Edit Medicine -->
+  <div id="medicineModal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-200">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-xl border border-slate-100 overflow-hidden transform scale-95 transition-transform duration-200" id="modalContainer">
+      
+      <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+        <div>
+          <h3 id="modalTitle" class="text-base font-bold text-slate-800">Add New Medicine</h3>
+          <p class="text-xs text-slate-500">Fill in batch details for stock tracking</p>
+        </div>
+        <button onclick="closeModal()" class="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="medicineForm" onsubmit="handleFormSubmit(event)" class="p-5 space-y-4">
+        <input type="hidden" id="medId">
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Medicine Name *</label>
+          <input type="text" id="medName" required placeholder="e.g. Amoxicillin 500mg" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Batch Number *</label>
+            <input type="text" id="medBatch" required placeholder="e.g. BTH-9082" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Category *</label>
+            <select id="medCategory" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+              <option value="Antibiotics">Antibiotics</option>
+              <option value="Analgesics">Analgesics</option>
+              <option value="Cardiovascular">Cardiovascular</option>
+              <option value="Vaccines">Vaccines</option>
+              <option value="Diabetes">Diabetes</option>
+              <option value="Vitamins">Vitamins</option>
+              <option value="Respiratory">Respiratory</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Stock Quantity *</label>
+            <input type="number" id="medQty" required min="0" placeholder="100" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Reorder Level *</label>
+            <input type="number" id="medReorder" required min="1" placeholder="20" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Expiry Date *</label>
+            <input type="date" id="medExpiry" required class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Unit Price ($) *</label>
+            <input type="number" id="medPrice" step="0.01" required min="0" placeholder="12.50" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Supplier Name</label>
+          <input type="text" id="medSupplier" placeholder="e.g. Pfizer Pharma Inc." class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500">
+        </div>
+
+        <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition">Save Medicine</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Quick Stock Adjustment -->
+  <div id="stockModal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-200">
+    <div class="bg-white rounded-2xl max-w-sm w-full shadow-xl border border-slate-100 p-5 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="text-base font-bold text-slate-800">Adjust Stock Quantity</h3>
+        <button onclick="closeStockModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <p id="stockModalMedName" class="text-xs text-slate-500 font-medium"></p>
+      
+      <div class="flex items-center justify-center gap-3 py-2">
+        <button onclick="adjustStockStep(-10)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-semibold text-xs">-10</button>
+        <button onclick="adjustStockStep(-1)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-semibold text-xs">-1</button>
+        <input type="number" id="stockAdjustInput" class="w-20 text-center py-2 border border-slate-300 rounded-lg font-bold text-lg" min="0">
+        <button onclick="adjustStockStep(1)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-semibold text-xs">+1</button>
+        <button onclick="adjustStockStep(10)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-semibold text-xs">+10</button>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="closeStockModal()" class="px-4 py-2 text-xs font-medium border border-slate-200 rounded-lg">Cancel</button>
+        <button onclick="saveStockAdjustment()" class="px-4 py-2 text-xs font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700">Update Stock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Core JavaScript Application Logic -->
+  <script>
+    // --- Sample Pre-loaded Data Helper ---
+    function getSampleData() {
+      const today = new Date();
+      
+      const addDays = (days) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().split('T')[0];
+      };
+
+      return [
+        {
+          id: 'med_1',
+          name: 'Amoxicillin 500mg Capsule',
+          batch: 'AMX-2024-09',
+          category: 'Antibiotics',
+          quantity: 12,
+          reorderLevel: 25,
+          unitPrice: 15.50,
+          expiryDate: addDays(-12), // Expired
+          supplier: 'PharmaCare Global'
+        },
+        {
+          id: 'med_2',
+          name: 'Paracetamol Extra 500mg',
+          batch: 'PCM-8842',
+          category: 'Analgesics',
+          quantity: 140,
+          reorderLevel: 50,
+          unitPrice: 4.20,
+          expiryDate: addDays(8), // Critical Expiry
+          supplier: 'MediSupply Ltd'
+        },
+        {
+          id: 'med_3',
+          name: 'Insulin Glargine 100IU/ml',
+          batch: 'INS-9901',
+          category: 'Diabetes',
+          quantity: 18,
+          reorderLevel: 20,
+          unitPrice: 45.00,
+          expiryDate: addDays(22), // Critical Expiry
+          supplier: 'Novo Health'
+        },
+        {
+          id: 'med_4',
+          name: 'Metformin HCl 850mg',
+          batch: 'MET-4410',
+          category: 'Diabetes',
+          quantity: 210,
+          reorderLevel: 40,
+          unitPrice: 8.75,
+          expiryDate: addDays(45), // Warning Expiry
+          supplier: 'Apex Bio'
+        },
+        {
+          id: 'med_5',
+          name: 'Atorvastatin 20mg Tablets',
+          batch: 'ATO-7731',
+          category: 'Cardiovascular',
+          quantity: 85,
+          reorderLevel: 30,
+          unitPrice: 22.00,
+          expiryDate: addDays(180), // Safe
+          supplier: 'CardioLife Supplies'
+        },
+        {
+          id: 'med_6',
+          name: 'Influenza Vaccine (2026 Season)',
+          batch: 'VAC-2026-X',
+          category: 'Vaccines',
+          quantity: 5,
+          reorderLevel: 15,
+          unitPrice: 32.00,
+          expiryDate: addDays(5), // Critical Expiry & Low Stock
+          supplier: 'VaxCorp Direct'
+        },
+        {
+          id: 'med_7',
+          name: 'Vitamin C 1000mg Effervescent',
+          batch: 'VTC-0021',
+          category: 'Vitamins',
+          quantity: 300,
+          reorderLevel: 50,
+          unitPrice: 6.50,
+          expiryDate: addDays(365), // Safe
+          supplier: 'NutraHealth'
+        },
+        {
+          id: 'med_8',
+          name: 'Salbutamol Inhaler 100mcg',
+          batch: 'SLB-3109',
+          category: 'Respiratory',
+          quantity: 42,
+          reorderLevel: 15,
+          unitPrice: 18.20,
+          expiryDate: addDays(-2), // Expired
+          supplier: 'AeroMed Inc.'
+        }
+      ];
+    }
+
+    // App State
+    let medicines = [];
+    let currentFilter = 'ALL';
+    let statusChartInstance = null;
+    let selectedStockMedId = null;
+
+    // LocalStorage Key
+    const STORAGE_KEY = 'meditrack_inventory_db_v1';
+
+    // Init App
+    window.onload = function() {
+      loadInventory();
+      initChart();
+      lucide.createIcons();
+    };
+
+    // Load from LocalStorage or pre-fill sample data
+    function loadInventory() {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          medicines = JSON.parse(stored);
+        } catch (e) {
+          medicines = getSampleData();
+        }
+      } else {
+        medicines = getSampleData();
+        saveInventory();
+      }
+      render();
+    }
+
+    function saveInventory() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(medicines));
+    }
+
+    function resetToSampleData() {
+      if (confirm('Reset inventory back to sample initial data? Any custom entries will be overwritten.')) {
+        medicines = getSampleData();
+        saveInventory();
+        render();
+        showToast('Demo data successfully restored', 'info');
+      }
+    }
+
+    // Expiry Calculation Helper
+    function getDaysToExpiry(expiryDateStr) {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const exp = new Date(expiryDateStr);
+      exp.setHours(0,0,0,0);
+      const diffTime = exp - today;
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    function getExpiryStatus(expiryDateStr) {
+      const days = getDaysToExpiry(expiryDateStr);
+      if (days < 0) return { status: 'EXPIRED', label: 'Expired', days, class: 'bg-red-100 text-red-700 border-red-200' };
+      if (days <= 30) return { status: 'CRITICAL', label: `Expires in ${days}d`, days, class: 'bg-amber-100 text-amber-800 border-amber-300' };
+      if (days <= 60) return { status: 'WARNING', label: `Expires in ${days}d`, days, class: 'bg-yellow-100 text-yellow-800 border-yellow-200' };
+      return { status: 'SAFE', label: 'Safe', days, class: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+    }
+
+    // Set Active Quick Filter
+    function setFilter(filterKey) {
+      currentFilter = filterKey;
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.dataset.filter === filterKey) {
+          btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-white shadow-sm';
+        } else {
+          btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium transition text-slate-600 hover:bg-slate-100';
+        }
+      });
+      renderTable();
+    }
+
+    // Filtered Medicine Computation
+    function getFilteredMedicines() {
+      const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
+      const category = document.getElementById('categoryFilter').value;
+
+      return medicines.filter(med => {
+        const expMeta = getExpiryStatus(med.expiryDate);
+        
+        // Category Filter
+        if (category !== 'ALL' && med.category !== category) return false;
+
+        // Status Filter Tag
+        if (currentFilter === 'EXPIRED' && expMeta.status !== 'EXPIRED') return false;
+        if (currentFilter === 'CRITICAL' && expMeta.status !== 'CRITICAL') return false;
+        if (currentFilter === 'WARNING' && expMeta.status !== 'WARNING') return false;
+        if (currentFilter === 'SAFE' && expMeta.status !== 'SAFE') return false;
+        if (currentFilter === 'LOW_STOCK' && med.quantity > med.reorderLevel) return false;
+
+        // Search Query
+        if (searchQuery) {
+          const matchName = med.name.toLowerCase().includes(searchQuery);
+          const matchBatch = med.batch.toLowerCase().includes(searchQuery);
+          const matchSupplier = (med.supplier || '').toLowerCase().includes(searchQuery);
+          return matchName || matchBatch || matchSupplier;
+        }
+
+        return true;
+      });
+    }
+
+    // Render Master Function
+    function render() {
+      updateDashboardMetrics();
+      renderFEFOAlerts();
+      renderTable();
+      updateChart();
+    }
+
+    // Render Metrics
+    function updateDashboardMetrics() {
+      let totalItems = medicines.length;
+      let expiredCount = 0;
+      let expiring30Count = 0;
+      let healthyCount = 0;
+      let lowStockCount = 0;
+      let totalVal = 0;
+
+      medicines.forEach(m => {
+        const status = getExpiryStatus(m.expiryDate).status;
+        totalVal += m.quantity * m.unitPrice;
+
+        if (status === 'EXPIRED') expiredCount++;
+        else if (status === 'CRITICAL') expiring30Count++;
+        else healthyCount++;
+
+        if (m.quantity <= m.reorderLevel) lowStockCount++;
+      });
+
+      document.getElementById('stat-total').innerText = totalItems;
+      document.getElementById('stat-expired').innerText = expiredCount;
+      document.getElementById('stat-expiring').innerText = expiring30Count;
+      document.getElementById('stat-healthy').innerText = healthyCount;
+      document.getElementById('stat-value').innerText = `Total Value: $${totalVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById('stat-low-stock').innerText = `${lowStockCount} item(s) below reorder level`;
+    }
+
+    // FEFO Alert Priority List Rendering
+    function renderFEFOAlerts() {
+      const fefoContainer = document.getElementById('fefo-list');
+      
+      // Sort items by expiry date ascending (FEFO)
+      const unexpired = medicines
+        .filter(m => getDaysToExpiry(m.expiryDate) >= 0)
+        .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate))
+        .slice(0, 4);
+
+      if (unexpired.length === 0) {
+        fefoContainer.innerHTML = `<p class="text-xs text-slate-400 italic">No active inventory nearing expiry.</p>`;
+        return;
+      }
+
+      fefoContainer.innerHTML = unexpired.map(med => {
+        const days = getDaysToExpiry(med.expiryDate);
+        const badgeColor = days <= 30 ? 'bg-amber-100 text-amber-800' : 'bg-blue-50 text-blue-700';
+        return `
+          <div class="p-3 rounded-xl border border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
+            <div class="overflow-hidden">
+              <h4 class="text-xs font-bold text-slate-800 truncate">${escapeHtml(med.name)}</h4>
+              <p class="text-[11px] text-slate-500">Batch: <span class="font-mono">${escapeHtml(med.batch)}</span> | Qty: <span class="font-bold text-slate-700">${med.quantity}</span></p>
+            </div>
+            <div class="text-right flex-shrink-0">
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${badgeColor}">
+                ${days === 0 ? 'Expires Today' : `${days} days left`}
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Render Main Table
+    function renderTable() {
+      const tbody = document.getElementById('inventory-tbody');
+      const emptyState = document.getElementById('empty-state');
+      const filtered = getFilteredMedicines();
+
+      document.getElementById('showing-count').innerText = filtered.length;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+      } else {
+        emptyState.classList.add('hidden');
+      }
+
+      tbody.innerHTML = filtered.map(med => {
+        const exp = getExpiryStatus(med.expiryDate);
+        const isLowStock = med.quantity <= med.reorderLevel;
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition-colors group">
+            <!-- Name & Supplier -->
+            <td class="py-3 px-4">
+              <div class="font-semibold text-slate-800">${escapeHtml(med.name)}</div>
+              <div class="text-xs text-slate-400 flex items-center gap-1">
+                <span>${escapeHtml(med.supplier || 'N/A')}</span>
+                <span>•</span>
+                <span>$${parseFloat(med.unitPrice).toFixed(2)}/unit</span>
+              </div>
+            </td>
+
+            <!-- Category -->
+            <td class="py-3 px-4">
+              <span class="text-xs font-medium px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200/60">
+                ${escapeHtml(med.category)}
+              </span>
+            </td>
+
+            <!-- Batch No -->
+            <td class="py-3 px-4 font-mono text-xs font-medium text-slate-600">
+              ${escapeHtml(med.batch)}
+            </td>
+
+            <!-- Quantity & Low Stock Warning -->
+            <td class="py-3 px-4">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-slate-800 ${isLowStock ? 'text-red-600' : ''}">${med.quantity}</span>
+                ${isLowStock ? `
+                  <span class="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-200 font-medium" title="Reorder level: ${med.reorderLevel}">Low Stock</span>
+                ` : ''}
+              </div>
+            </td>
+
+            <!-- Expiry Date -->
+            <td class="py-3 px-4 font-medium text-slate-700 whitespace-nowrap">
+              ${formatDate(med.expiryDate)}
+            </td>
+
+            <!-- Status Badge -->
+            <td class="py-3 px-4">
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-full border ${exp.class} inline-flex items-center gap-1 whitespace-nowrap">
+                <span class="w-1.5 h-1.5 rounded-full ${exp.status === 'EXPIRED' ? 'bg-red-600' : exp.status === 'CRITICAL' ? 'bg-amber-600' : 'bg-emerald-600'}"></span>
+                ${exp.label}
+              </span>
+            </td>
+
+            <!-- Action Buttons -->
+            <td class="py-3 px-4 text-right">
+              <div class="flex items-center justify-end gap-1">
+                <button onclick="openStockModal('${med.id}')" title="Adjust Stock" class="p-1.5 text-slate-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition">
+                  <i data-lucide="arrow-up-down" class="w-4 h-4"></i>
+                </button>
+                <button onclick="editMedicine('${med.id}')" title="Edit Item" class="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                  <i data-lucide="edit-3" class="w-4 h-4"></i>
+                </button>
+                <button onclick="deleteMedicine('${med.id}')" title="Delete Item" class="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    // Chart.js Visualization
+    function initChart() {
+      const ctx = document.getElementById('statusChart').getContext('2d');
+      statusChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Expired', 'Critical (<30d)', 'Warning (<60d)', 'Safe'],
+          datasets: [{
+            data: [0, 0, 0, 0],
+            backgroundColor: ['#ef4444', '#f59e0b', '#facc15', '#10b981'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                boxWidth: 10,
+                font: { size: 11 }
+              }
+            }
+          },
+          cutout: '70%'
+        }
+      });
+    }
+
+    function updateChart() {
+      if (!statusChartInstance) return;
+
+      let expired = 0, critical = 0, warning = 0, safe = 0;
+      medicines.forEach(m => {
+        const st = getExpiryStatus(m.expiryDate).status;
+        if (st === 'EXPIRED') expired++;
+        else if (st === 'CRITICAL') critical++;
+        else if (st === 'WARNING') warning++;
+        else safe++;
+      });
+
+      statusChartInstance.data.datasets[0].data = [expired, critical, warning, safe];
+      statusChartInstance.update();
+    }
+
+    // Modal Control Functions
+    function openModal(editId = null) {
+      const modal = document.getElementById('medicineModal');
+      const container = document.getElementById('modalContainer');
+      const form = document.getElementById('medicineForm');
+
+      form.reset();
+      document.getElementById('medId').value = '';
+
+      if (editId) {
+        const med = medicines.find(m => m.id === editId);
+        if (med) {
+          document.getElementById('modalTitle').innerText = 'Edit Medicine Stock';
+          document.getElementById('medId').value = med.id;
+          document.getElementById('medName').value = med.name;
+          document.getElementById('medBatch').value = med.batch;
+          document.getElementById('medCategory').value = med.category;
+          document.getElementById('medQty').value = med.quantity;
+          document.getElementById('medReorder').value = med.reorderLevel;
+          document.getElementById('medPrice').value = med.unitPrice;
+          document.getElementById('medExpiry').value = med.expiryDate;
+          document.getElementById('medSupplier').value = med.supplier || '';
+        }
+      } else {
+        document.getElementById('modalTitle').innerText = 'Add New Medicine';
+      }
+
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      container.classList.remove('scale-95');
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('medicineModal');
+      const container = document.getElementById('modalContainer');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      container.classList.add('scale-95');
+    }
+
+    // Form Submission for Add / Edit
+    function handleFormSubmit(e) {
+      e.preventDefault();
+
+      const id = document.getElementById('medId').value;
+      const newMed = {
+        id: id || 'med_' + Date.now(),
+        name: document.getElementById('medName').value.trim(),
+        batch: document.getElementById('medBatch').value.trim(),
+        category: document.getElementById('medCategory').value,
+        quantity: parseInt(document.getElementById('medQty').value, 10),
+        reorderLevel: parseInt(document.getElementById('medReorder').value, 10),
+        unitPrice: parseFloat(document.getElementById('medPrice').value),
+        expiryDate: document.getElementById('medExpiry').value,
+        supplier: document.getElementById('medSupplier').value.trim()
+      };
+
+      if (id) {
+        const index = medicines.findIndex(m => m.id === id);
+        if (index !== -1) medicines[index] = newMed;
+        showToast('Medicine record updated successfully');
+      } else {
+        medicines.unshift(newMed);
+        showToast('New medicine added to stock');
+      }
+
+      saveInventory();
+      render();
+      closeModal();
+    }
+
+    function editMedicine(id) {
+      openModal(id);
+    }
+
+    function deleteMedicine(id) {
+      const med = medicines.find(m => m.id === id);
+      if (med && confirm(`Are you sure you want to remove "${med.name}" (Batch: ${med.batch}) from inventory?`)) {
+        medicines = medicines.filter(m => m.id !== id);
+        saveInventory();
+        render();
+        showToast('Medicine item deleted', 'warning');
+      }
+    }
+
+    // Quick Stock Modal Logic
+    function openStockModal(id) {
+      selectedStockMedId = id;
+      const med = medicines.find(m => m.id === id);
+      if (!med) return;
+
+      document.getElementById('stockModalMedName').innerText = `${med.name} (${med.batch})`;
+      document.getElementById('stockAdjustInput').value = med.quantity;
+
+      const modal = document.getElementById('stockModal');
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+    }
+
+    function closeStockModal() {
+      const modal = document.getElementById('stockModal');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      selectedStockMedId = null;
+    }
+
+    function adjustStockStep(val) {
+      const input = document.getElementById('stockAdjustInput');
+      let current = parseInt(input.value) || 0;
+      current = Math.max(0, current + val);
+      input.value = current;
+    }
+
+    function saveStockAdjustment() {
+      if (!selectedStockMedId) return;
+      const med = medicines.find(m => m.id === selectedStockMedId);
+      if (med) {
+        const newQty = parseInt(document.getElementById('stockAdjustInput').value) || 0;
+        med.quantity = newQty;
+        saveInventory();
+        render();
+        showToast(`Stock updated for ${med.name}`);
+      }
+      closeStockModal();
+    }
+
+    // CSV Export Function
+    function exportCSV() {
+      if (medicines.length === 0) {
+        showToast('No inventory data to export', 'error');
+        return;
+      }
+
+      const headers = ['ID', 'Medicine Name', 'Batch Number', 'Category', 'Quantity', 'Reorder Level', 'Unit Price ($)', 'Expiry Date', 'Status', 'Supplier'];
+      const rows = medicines.map(m => [
+        m.id,
+        `"${m.name.replace(/"/g, '""')}"`,
+        `"${m.batch.replace(/"/g, '""')}"`,
+        `"${m.category}"`,
+        m.quantity,
+        m.reorderLevel,
+        m.unitPrice,
+        m.expiryDate,
+        getExpiryStatus(m.expiryDate).status,
+        `"${(m.supplier || '').replace(/"/g, '""')}"`
+      ]);
+
+      const csvContent = 'data:text/csv;charset=utf-8,' 
+        + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `Medicine_Inventory_Export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('Exported inventory to CSV');
+    }
+
+    // JSON Import Function
+    function importJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (Array.isArray(parsed)) {
+            medicines = parsed;
+            saveInventory();
+            render();
+            showToast('Inventory dataset imported successfully!');
+          } else {
+            showToast('Invalid JSON file structure', 'error');
+          }
+        } catch (err) {
+          showToast('Failed to parse JSON file', 'error');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = ''; // Reset input
+    }
+
+    // Toast Notification System
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      const colors = {
+        success: 'bg-slate-900 text-white border-brand-500',
+        warning: 'bg-amber-800 text-white border-amber-400',
+        error: 'bg-red-800 text-white border-red-400',
+        info: 'bg-brand-800 text-white border-teal-400'
+      };
+
+      toast.className = `p-3 rounded-xl shadow-lg border-l-4 text-xs font-medium flex items-center justify-between gap-3 pointer-events-auto transform transition-all duration-300 translate-x-10 opacity-0 ${colors[type] || colors.success}`;
+      
+      toast.innerHTML = `
+        <span>${escapeHtml(message)}</span>
+        <button onclick="this.parentElement.remove()" class="opacity-70 hover:opacity-100">&times;</button>
+      `;
+
+      container.appendChild(toast);
+
+      // Trigger animation
+      setTimeout(() => {
+        toast.classList.remove('translate-x-10', 'opacity-0');
+      }, 10);
+
+      // Auto remove
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-x-10');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    // Utilities
+    function formatDate(dateStr) {
+      if (!dateStr) return 'N/A';
+      const [year, month, day] = dateStr.split('-');
+      const date = new Date(year, month - 1, day);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
